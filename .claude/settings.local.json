@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install:*)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(pandoc \"E:\\\\Users\\\\khanhdn\\\\Downloads\\\\Claudevhv\\\\HỆ THỐNG QUẢN LÝ ĐỐI TÁC VÀO LÀM VIỆC\\\\docs\\\\User story.docx\" -o /tmp/userstory.md)",
+      "Read(//tmp/**)",
+      "Read(//c/Users/khanhdn/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/c96447d4-a1d4-467e-a536-6cc06791d6ff/eeb2e553-aa46-4b26-a5cc-858f3dac756f/skills/docx/**)",
+      "Bash(python scripts/office/unpack.py \"E:\\\\Users\\\\khanhdn\\\\Downloads\\\\Claudevhv\\\\HỆ THỐNG QUẢN LÝ ĐỐI TÁC VÀO LÀM VIỆC\\\\docs\\\\User story.docx\" /tmp/userstory_unpacked/)",
+      "Read(//e/tmp/**)",
+      "Bash(mkdir -p userstory_unzip)",
+      "Bash(cp \"E:\\\\Users\\\\khanhdn\\\\Downloads\\\\Claudevhv\\\\HỆ THỐNG QUẢN LÝ ĐỐI TÁC VÀO LÀM VIỆC\\\\docs\\\\User story.docx\" /tmp/userstory.docx)",
+      "Bash(unzip -o /tmp/userstory.docx -d /tmp/userstory_unzip/)",
+      "Bash(grep -v '^$')",
+      "Bash(grep -v '^[[:space:]]*$')",
+      "Bash(node -e \":*)"
+    ]
+  }
+}
