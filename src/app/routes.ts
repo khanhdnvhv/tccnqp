@@ -20,36 +20,39 @@ import { CalendarPage } from './pages/CalendarPage';
 import { PartnerProfilePage } from './pages/PartnerProfilePage';
 import { ArchivePage } from './pages/ArchivePage';
 
-export const router = createBrowserRouter([
-  {
-    path: '/login',
-    Component: LoginPage,
-  },
-  {
-    path: '/',
-    Component: Layout,
-    children: [
-      { index: true, Component: Dashboard },
-      { path: 'visitors', Component: VisitorRegistrationPage },
-      { path: 'appointments', Component: AppointmentPage },
-      { path: 'entry-history', Component: EntryHistoryPage },
-      { path: 'badges', Component: BadgeManagementPage },
-      { path: 'vehicles', Component: VehiclePage },
-      { path: 'register-book', Component: RegisterBookPage },
-      { path: 'notifications', Component: NotificationPage },
-      { path: 'reports', Component: ReportsPage },
-      { path: 'search', Component: SearchPage },
-      { path: 'settings', Component: SettingsPage },
-      { path: 'calendar', Component: CalendarPage },
-      { path: 'partners', Component: PartnerProfilePage },
-      { path: 'archive', Component: ArchivePage },
-      { path: 'users', Component: UsersPage },
-      { path: 'organization', Component: OrganizationPage },
-      { path: 'categories', Component: CategoriesPage },
-    ],
-  },
-  {
-    path: '*',
-    Component: NotFoundPage,
-  },
-]);
+export const router = createBrowserRouter(
+  [
+    {
+      path: '/login',
+      Component: LoginPage,
+    },
+    {
+      path: '/',
+      Component: Layout,
+      children: [
+        { index: true, Component: Dashboard },
+        { path: 'visitors', Component: VisitorRegistrationPage },
+        { path: 'appointments', Component: AppointmentPage },
+        { path: 'entry-history', Component: EntryHistoryPage },
+        { path: 'badges', Component: BadgeManagementPage },
+        { path: 'vehicles', Component: VehiclePage },
+        { path: 'register-book', Component: RegisterBookPage },
+        { path: 'notifications', Component: NotificationPage },
+        { path: 'reports', Component: ReportsPage },
+        { path: 'search', Component: SearchPage },
+        { path: 'settings', Component: SettingsPage },
+        { path: 'calendar', Component: CalendarPage },
+        { path: 'partners', Component: PartnerProfilePage },
+        { path: 'archive', Component: ArchivePage },
+        { path: 'users', Component: UsersPage },
+        { path: 'organization', Component: OrganizationPage },
+        { path: 'categories', Component: CategoriesPage },
+      ],
+    },
+    {
+      path: '*',
+      Component: NotFoundPage,
+    },
+  ],
+  { basename: import.meta.env.BASE_URL }
+);
