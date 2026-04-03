@@ -14,7 +14,19 @@
       "Bash(unzip -o /tmp/userstory.docx -d /tmp/userstory_unzip/)",
       "Bash(grep -v '^$')",
       "Bash(grep -v '^[[:space:]]*$')",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(curl -s \"https://api.github.com/repos/khanhdnvhv/tccnqp/actions/runs?per_page=3\")",
+      "Bash(curl -s \"https://api.github.com/repos/khanhdnvhv/tccnqp/actions/runs?per_page=3\" -o C:/Temp/runs.json)",
+      "Bash(node -e \"const d=require\\(''fs''\\).readFileSync\\(''C:/Temp/runs.json'',''utf8''\\); const j=JSON.parse\\(d\\); \\(j.workflow_runs||[]\\).forEach\\(r=>console.log\\(r.status,''|'',r.conclusion,''|'',r.name\\)\\);\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(r[''''status''''],''''|'''',r[''''conclusion''''],''''|'''',r[''''name'''']\\) for r in d.get\\(''''workflow_runs'''',[]\\)]\")",
+      "Bash(curl -s \"https://api.github.com/repos/khanhdnvhv/tccnqp/pages\")",
+      "Bash(curl -s \"https://khanhdnvhv.github.io/tccnqp/\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://khanhdnvhv.github.io/tccnqp/assets/\")",
+      "Bash(node -e \"const d=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(JSON.stringify\\(d.scripts,null,2\\)\\)\")",
+      "Bash(npm run:*)",
+      "Bash(curl -s -H \"Cache-Control: no-cache\" \"https://khanhdnvhv.github.io/tccnqp/\")",
+      "Bash(curl -s \"https://api.github.com/repos/khanhdnvhv/tccnqp/branches\" -o /tmp/branches.json)",
+      "Bash(node -e \"const d=require\\(''fs''\\).readFileSync\\(''/tmp/branches.json'',''utf8''\\);JSON.parse\\(d\\).forEach\\(b=>console.log\\(b.name\\)\\)\")"
     ]
   }
 }

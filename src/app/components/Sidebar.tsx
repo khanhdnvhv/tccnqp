@@ -3,28 +3,19 @@ import { Tooltip } from './Tooltip';
 import { NavLink } from 'react-router';
 import {
   LayoutDashboard,
-  UserPlus,
-  CalendarClock,
-  CalendarDays,
-  History,
-  CreditCard,
-  Car,
-  BookOpen,
-  Bell,
-  BarChart3,
-  Search,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
+  UserSearch,
   Users,
-  Building2,
+  ScanSearch,
+  BarChart3,
+  Bell,
   FolderCog,
-  Briefcase,
-  Archive,
+  Settings,
   LogOut,
   Menu,
   X,
   Star,
+  ChevronLeft,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -40,6 +31,12 @@ interface NavItem {
   badge?: number;
   requiredPermission?: Permission;
   requiredAnyPermission?: Permission[];
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+  adminOnly?: boolean;
 }
 
 export function Sidebar() {
@@ -61,26 +58,35 @@ export function Sidebar() {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
-  const mainNav: NavItem[] = [
-    { to: '/', icon: LayoutDashboard, label: 'Tổng quan' },
-    { to: '/visitors', icon: UserPlus, label: 'Đăng ký đối tác', badge: 3 },
-    { to: '/appointments', icon: CalendarClock, label: 'Lịch hẹn', badge: 3 },
-    { to: '/calendar', icon: CalendarDays, label: 'Lịch trực quan' },
-    { to: '/partners', icon: Briefcase, label: 'Hồ sơ đối tác' },
-    { to: '/archive', icon: Archive, label: 'Lưu trữ & Số hóa' },
-    { to: '/entry-history', icon: History, label: 'Lịch sử ra vào' },
-    { to: '/badges', icon: CreditCard, label: 'Quản lý thẻ' },
-    { to: '/vehicles', icon: Car, label: 'Phương tiện' },
-    { to: '/register-book', icon: BookOpen, label: 'Sổ đăng ký' },
-    { to: '/notifications', icon: Bell, label: 'Cảnh báo & TB', badge: 4 },
-    { to: '/reports', icon: BarChart3, label: 'Báo cáo & TK' },
-    { to: '/search', icon: Search, label: 'Tìm kiếm' },
-  ];
-
-  const adminNav: NavItem[] = [
-    { to: '/users', icon: Users, label: 'Cán bộ bảo vệ', requiredPermission: 'user.view' },
-    { to: '/organization', icon: Building2, label: 'Đơn vị', requiredPermission: 'org.view' },
-    { to: '/categories', icon: FolderCog, label: 'Danh mục', requiredPermission: 'category.view' },
+  const sections: NavSection[] = [
+    {
+      title: 'ĐIỀU HÀNH',
+      items: [
+        { to: '/', icon: LayoutDashboard, label: 'Tổng quan' },
+      ],
+    },
+    {
+      title: 'NGHIỆP VỤ ĐỐI NGOẠI',
+      items: [
+        { to: '/partner-dossier', icon: UserSearch, label: 'Lý lịch Đối tác' },
+        { to: '/delegations', icon: Users, label: 'Quản lý Đoàn vào', badge: 3 },
+      ],
+    },
+    {
+      title: 'HỆ THỐNG DỮ LIỆU',
+      items: [
+        { to: '/archive', icon: ScanSearch, label: 'Kho số hóa (OCR)' },
+        { to: '/reports', icon: BarChart3, label: 'Báo cáo & Thống kê' },
+        { to: '/notifications', icon: Bell, label: 'Cảnh báo', badge: 2 },
+      ],
+    },
+    {
+      title: 'QUẢN TRỊ',
+      adminOnly: true,
+      items: [
+        { to: '/categories', icon: FolderCog, label: 'Danh mục', requiredPermission: 'category.view' },
+      ],
+    },
   ];
 
   const isVisible = (item: NavItem) => {
@@ -89,8 +95,63 @@ export function Sidebar() {
     return true;
   };
 
-  const visibleAdminNav = adminNav.filter(isVisible);
-  const roleName = roles.length > 0 ? roles[0].name : '';
+  const renderNavLink = (item: NavItem, isCollapsed: boolean, layoutId: string) => {
+    const navLink = (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.to === '/'}
+        aria-current={location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to)) ? 'page' : undefined}
+        className={({ isActive }) =>
+          `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${
+            isActive
+              ? 'bg-sidebar-primary/15 text-sidebar-primary'
+              : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground/90'
+          } ${isCollapsed ? 'justify-center' : ''}`
+        }
+      >
+        {({ isActive }) => (
+          <>
+            {isActive && (
+              <motion.div
+                layoutId={reducedMotion ? undefined : layoutId}
+                className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-sidebar-primary"
+                transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 350, damping: 30 }}
+              />
+            )}
+            <div className={`relative flex items-center justify-center w-5 h-5 shrink-0 ${isActive ? 'text-sidebar-primary' : ''}`}>
+              <item.icon className="w-[17px] h-[17px]" />
+            </div>
+            {!isCollapsed && (
+              <>
+                <span className="text-[13px] flex-1">{item.label}</span>
+                {item.badge && item.badge > 0 && (
+                  <span className={`min-w-[18px] h-[18px] px-1 text-[10px] rounded-full flex items-center justify-center ${
+                    isActive ? 'bg-sidebar-primary text-white' : 'bg-red-500/90 text-white'
+                  }`}>
+                    {item.badge}
+                  </span>
+                )}
+              </>
+            )}
+            {isCollapsed && item.badge && item.badge > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] rounded-full flex items-center justify-center">
+                {item.badge}
+              </span>
+            )}
+          </>
+        )}
+      </NavLink>
+    );
+
+    return isCollapsed ? (
+      <Tooltip key={item.to} content={item.label} position="right" delay={200} className="w-full">
+        {navLink}
+      </Tooltip>
+    ) : (
+      <div key={item.to}>{navLink}</div>
+    );
+  };
 
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => {
     const isCollapsed = isMobile ? false : collapsed;
@@ -99,7 +160,6 @@ export function Sidebar() {
       <>
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border shrink-0">
-          {/* Military emblem */}
           <div className="relative w-9 h-9 shrink-0">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[#1a5c32] to-[#0d3d1f]" />
             <div className="absolute inset-0 rounded-xl border border-white/10" />
@@ -135,126 +195,38 @@ export function Sidebar() {
           )}
         </div>
 
-
         {/* Navigation */}
         <nav className="flex-1 py-3 px-3 space-y-0.5 overflow-y-auto" aria-label="Menu chính">
-          <p className={`text-[9.5px] uppercase tracking-[0.14em] text-sidebar-foreground/25 mb-2 ${isCollapsed ? 'text-center' : 'px-3'}`}>
-            {isCollapsed ? '•••' : 'ĐIỀU HÀNH'}
-          </p>
-          {mainNav.filter(isVisible).map((item) => {
-            const navLink = (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                aria-current={location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to)) ? 'page' : undefined}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${
-                    isActive
-                      ? 'bg-sidebar-primary/15 text-sidebar-primary'
-                      : 'text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground/80'
-                  } ${isCollapsed ? 'justify-center' : ''}`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.div
-                        layoutId={reducedMotion ? undefined : 'nav-active'}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-sidebar-primary"
-                        transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 350, damping: 30 }}
-                      />
-                    )}
-                    <div className={`relative flex items-center justify-center w-5 h-5 shrink-0 ${isActive ? 'text-sidebar-primary' : ''}`}>
-                      <item.icon className="w-[17px] h-[17px]" />
-                    </div>
-                    {!isCollapsed && (
-                      <>
-                        <span className="text-[13px] flex-1">{item.label}</span>
-                        {item.badge && item.badge > 0 && (
-                          <span className={`min-w-[18px] h-[18px] px-1 text-[10px] rounded-full flex items-center justify-center ${
-                            isActive ? 'bg-sidebar-primary text-white' : 'bg-red-500/90 text-white'
-                          }`}>
-                            {item.badge}
-                          </span>
-                        )}
-                      </>
-                    )}
-                    {isCollapsed && item.badge && item.badge > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] rounded-full flex items-center justify-center">
-                        {item.badge}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            );
+          {sections.map((section, sIdx) => {
+            const visibleItems = section.items.filter(isVisible);
+            if (section.adminOnly && visibleItems.length === 0) return null;
 
-            return isCollapsed ? (
-              <Tooltip key={item.to} content={item.label} position="right" delay={200} className="w-full">
-                {navLink}
-              </Tooltip>
-            ) : (
-              <div key={item.to}>{navLink}</div>
+            return (
+              <div key={section.title}>
+                {sIdx > 0 && (
+                  <div className="pt-4 pb-1">
+                    <div className={`${isCollapsed ? 'flex justify-center' : 'px-3'}`}>
+                      {isCollapsed ? (
+                        <div className="w-6 h-px bg-sidebar-foreground/10" />
+                      ) : (
+                        <p className="text-[9.5px] uppercase tracking-[0.14em] text-sidebar-foreground/45">
+                          {section.title}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {sIdx === 0 && (
+                  <p className={`text-[9.5px] uppercase tracking-[0.14em] text-sidebar-foreground/45 mb-2 ${isCollapsed ? 'text-center' : 'px-3'}`}>
+                    {isCollapsed ? '•••' : section.title}
+                  </p>
+                )}
+                {visibleItems.map((item) =>
+                  renderNavLink(item, isCollapsed, `nav-active-${sIdx}`)
+                )}
+              </div>
             );
           })}
-
-          {/* Admin Section */}
-          {visibleAdminNav.length > 0 && (
-            <>
-              <div className="pt-4 pb-1">
-                <div className={`${isCollapsed ? 'flex justify-center' : 'px-3'}`}>
-                  {isCollapsed ? (
-                    <div className="w-6 h-px bg-sidebar-foreground/10" />
-                  ) : (
-                    <p className="text-[9.5px] uppercase tracking-[0.14em] text-sidebar-foreground/25">
-                      HỆ THỐNG
-                    </p>
-                  )}
-                </div>
-              </div>
-              {visibleAdminNav.map((item) => {
-                const adminLink = (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    aria-current={location.pathname === item.to ? 'page' : undefined}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${
-                        isActive
-                          ? 'bg-sidebar-primary/15 text-white'
-                          : 'text-sidebar-foreground/50 hover:bg-white/[0.04] hover:text-sidebar-foreground/80'
-                      } ${isCollapsed ? 'justify-center' : ''}`
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && (
-                          <motion.div
-                            layoutId={reducedMotion ? undefined : 'nav-active-admin'}
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-sidebar-primary"
-                            transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 350, damping: 30 }}
-                          />
-                        )}
-                        <div className={`relative flex items-center justify-center w-5 h-5 shrink-0 ${isActive ? 'text-sidebar-primary' : ''}`}>
-                          <item.icon className="w-[17px] h-[17px]" />
-                        </div>
-                        {!isCollapsed && <span className="text-[13px]">{item.label}</span>}
-                      </>
-                    )}
-                  </NavLink>
-                );
-
-                return isCollapsed ? (
-                  <Tooltip key={item.to} content={item.label} position="right" delay={200} className="w-full">
-                    {adminLink}
-                  </Tooltip>
-                ) : (
-                  <div key={item.to}>{adminLink}</div>
-                );
-              })}
-            </>
-          )}
         </nav>
 
         {/* Bottom */}
@@ -266,7 +238,7 @@ export function Sidebar() {
               `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
                 isActive
                   ? 'bg-sidebar-primary/15 text-white'
-                  : 'text-sidebar-foreground/50 hover:bg-white/[0.04] hover:text-sidebar-foreground/80'
+                  : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground/90'
               } ${isCollapsed ? 'justify-center' : ''}`
             }
             aria-label="Cài đặt"
@@ -287,7 +259,7 @@ export function Sidebar() {
           {!isMobile && (
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className={`flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 w-full text-sidebar-foreground/30 hover:bg-sidebar-accent hover:text-sidebar-foreground/50 mt-1 ${isCollapsed ? 'justify-center' : ''}`}
+              className={`flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 w-full text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-foreground/65 mt-1 ${isCollapsed ? 'justify-center' : ''}`}
               aria-label={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
               aria-expanded={!collapsed}
             >
@@ -304,7 +276,7 @@ export function Sidebar() {
 
           {!isCollapsed && (
             <div className="pt-2 px-3">
-              <p className="text-[9px] text-sidebar-foreground/20 tracking-wide">VMS v1.0 &copy; BQP 2026</p>
+              <p className="text-[9px] text-sidebar-foreground/35 tracking-wide">VMS v2.0 &copy; TCCNQP 2026</p>
             </div>
           )}
         </div>

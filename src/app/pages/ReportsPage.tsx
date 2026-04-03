@@ -1,633 +1,699 @@
-import { useState, useMemo, useRef } from 'react';
-import { useRovingTabindex } from '../hooks/useRovingTabindex';
-import { useColumnVisibility, type ColumnDef } from '../hooks/useColumnVisibility';
-import { useColumnResize } from '../hooks/useColumnResize';
-import { useColumnOrder } from '../hooks/useColumnOrder';
-import { useReducedData } from '../hooks/useReducedData';
+import { useState, useMemo, useCallback } from 'react';
 import { Header } from '../components/Header';
 import { PageTransition } from '../components/PageTransition';
-import { ColumnToggle } from '../components/ColumnToggle';
-import { ResizeHandle } from '../components/ResizeHandle';
-import { ResetWidthsButton } from '../components/ResetWidthsButton';
-import { DraggableHeader } from '../components/DraggableHeader';
-import { incomingDocs, outgoingDocs, internalDocs, type EnhancedDocument } from '../data/documentData';
-import { enhancedTasks } from '../data/taskData';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend,
-} from 'recharts';
+  doanVaoData, doanRaData,
+  type DoanVao, type DoanRa,
+} from '../data/reportData';
 import {
-  FileInput, FileOutput, FileText, ClipboardList, Download, Calendar,
-  TrendingUp, TrendingDown, Users, Clock, BarChart3, PieChart as PieChartIcon,
-  Activity, Target, AlertTriangle, CheckCircle2, Filter, Columns,
+  Users, Globe, ArrowDownToLine, ArrowUpFromLine,
+  Search, Printer, FileSpreadsheet, Filter, Plane, Ship,
+  BarChart3, X, Building2, CalendarDays, TrendingUp,
+  ArrowUpDown, ChevronDown,
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { toast } from 'sonner';
 
-const COLORS = ['#2563eb', '#0891b2', '#059669', '#d97706', '#7c3aed', '#dc2626', '#94a3b8', '#ec4899'];
+type ReportTab = 'tong-hop' | 'doan-vao' | 'doan-ra';
 
-type ReportTab = 'overview' | 'documents' | 'tasks' | 'staff';
+// ---- CSV Export ----
+function downloadCSV(filename: string, headers: string[], rows: string[][]) {
+  const BOM = '\uFEFF';
+  const csv = BOM + [headers.join(','), ...rows.map((r) => r.map((c) => `"${(c ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<ReportTab>('overview');
-  const reducedData = useReducedData();
+  const [activeTab, setActiveTab] = useState<ReportTab>('tong-hop');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [doiTacFilterVao, setDoiTacFilterVao] = useState<string>('all');
+  const [donViFilterVao, setDonViFilterVao] = useState<string>('all');
+  const [doiTacFilterRa, setDoiTacFilterRa] = useState<string>('all');
+  const [donViFilterRa, setDonViFilterRa] = useState<string>('all');
+  const [searchVao, setSearchVao] = useState('');
+  const [searchRa, setSearchRa] = useState('');
 
-  const reportTabKeys = useMemo(() => ['overview', 'documents', 'tasks', 'staff'] as const, []);
-  const { getTabIndex: getReportTabIndex, handleTablistKeyDown: handleReportTablistKeyDown } = useRovingTabindex(
-    reportTabKeys as unknown as string[],
-    activeTab,
-    (key) => setActiveTab(key as ReportTab),
-  );
-
-  const [periodFilter, setPeriodFilter] = useState('month');
-
-  // Staff table column visibility
-  type StaffColKey = 'name' | 'tasks' | 'done' | 'docs' | 'rate' | 'progress';
-  const staffColDefs = useMemo<ColumnDef<StaffColKey>[]>(() => [
-    { key: 'name', label: 'Cán bộ', required: true },
-    { key: 'tasks', label: 'Công việc' },
-    { key: 'done', label: 'Hoàn thành' },
-    { key: 'docs', label: 'VB xử lý' },
-    { key: 'rate', label: 'Tỷ lệ' },
-    { key: 'progress', label: 'TB tiến độ' },
-  ], []);
-  const staffColVis = useColumnVisibility<StaffColKey>({ storageKey: 'reports_staff', columns: staffColDefs });
-
-  const staffResizeCols = useMemo(() => ['name', 'tasks', 'done', 'docs', 'rate', 'progress'] as StaffColKey[], []);
-  const staffColResize = useColumnResize<StaffColKey>({
-    storageKey: 'reports_staff',
-    columns: staffResizeCols,
-    config: {
-      name: { defaultWidth: 200, minWidth: 120, maxWidth: 320 },
-      tasks: { defaultWidth: 100, minWidth: 60, maxWidth: 160 },
-      done: { defaultWidth: 100, minWidth: 60, maxWidth: 160 },
-      docs: { defaultWidth: 100, minWidth: 60, maxWidth: 160 },
-      rate: { defaultWidth: 100, minWidth: 60, maxWidth: 160 },
-      progress: { defaultWidth: 140, minWidth: 80, maxWidth: 220 },
-    },
-    defaultMinWidth: 60,
-  });
-  const staffTableRef = useRef<HTMLTableElement>(null);
-
-  // Column order for staff table
-  const defaultStaffColOrder = useMemo<StaffColKey[]>(() => ['name', 'tasks', 'done', 'docs', 'rate', 'progress'], []);
-  const staffColLabels = useMemo<Record<StaffColKey, string>>(() => ({
-    name: 'Nhân viên', tasks: 'Công việc', done: 'Hoàn thành',
-    docs: 'Văn bản', rate: 'Tỷ lệ', progress: 'Tiến độ',
-  }), []);
-  const staffColOrder = useColumnOrder<StaffColKey>({ storageKey: 'reports_staff', defaultOrder: defaultStaffColOrder, labels: staffColLabels });
-  const staffOrderedVisibleCols = useMemo(() => staffColOrder.order.filter(k => k === 'name' || staffColVis.isVisible(k)), [staffColOrder.order, staffColVis]);
-
-  const allDocs = useMemo(() => [...incomingDocs, ...outgoingDocs, ...internalDocs], []);
-
-  // === Document Stats ===
-  const docStats = useMemo(() => {
-    const byType = [
-      { name: 'VB Đến', value: incomingDocs.length, color: '#1e40af' },
-      { name: 'VB Đi', value: outgoingDocs.length, color: '#059669' },
-      { name: 'Nội bộ', value: internalDocs.length, color: '#7c3aed' },
-    ];
-    const byCategory: Record<string, number> = {};
-    allDocs.forEach((d) => { byCategory[d.category] = (byCategory[d.category] || 0) + 1; });
-    const byCategoryArr = Object.entries(byCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-
-    const byField: Record<string, number> = {};
-    allDocs.forEach((d) => { byField[d.field] = (byField[d.field] || 0) + 1; });
-    const byFieldArr = Object.entries(byField).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-
-    const byPriority = [
-      { name: 'Hỏa tốc', value: allDocs.filter((d) => d.priority === 'urgent_top').length, color: '#dc2626' },
-      { name: 'Khẩn', value: allDocs.filter((d) => d.priority === 'urgent').length, color: '#f97316' },
-      { name: 'Cao', value: allDocs.filter((d) => d.priority === 'high').length, color: '#eab308' },
-      { name: 'TB', value: allDocs.filter((d) => d.priority === 'medium').length, color: '#0891b2' },
-      { name: 'Thấp', value: allDocs.filter((d) => d.priority === 'low').length, color: '#94a3b8' },
-    ];
-
-    const overdue = allDocs.filter((d) => d.deadline && new Date(d.deadline) < new Date() && !['completed', 'published', 'distributed'].includes(d.status)).length;
-    const completed = allDocs.filter((d) => ['completed', 'published', 'distributed'].includes(d.status)).length;
-    const processing = allDocs.filter((d) => ['processing', 'assigned', 'dept_review', 'leader_review', 'review'].includes(d.status)).length;
-
-    return { byType, byCategoryArr, byFieldArr, byPriority, overdue, completed, processing, total: allDocs.length };
-  }, [allDocs]);
-
-  // === Task Stats ===
-  const taskStats = useMemo(() => {
-    const total = enhancedTasks.length;
-    const done = enhancedTasks.filter((t) => t.status === 'done').length;
-    const inProgress = enhancedTasks.filter((t) => t.status === 'in_progress').length;
-    const overdue = enhancedTasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'done').length;
-    const avgProgress = Math.round(enhancedTasks.reduce((sum, t) => sum + t.progress, 0) / total);
-    const completionRate = Math.round((done / total) * 100);
-
-    const byStatus = [
-      { name: 'Chờ xử lý', value: enhancedTasks.filter((t) => t.status === 'todo').length, color: '#94a3b8' },
-      { name: 'Đang làm', value: inProgress, color: '#1e40af' },
-      { name: 'Chờ duyệt', value: enhancedTasks.filter((t) => t.status === 'review').length, color: '#7c3aed' },
-      { name: 'Hoàn thành', value: done, color: '#059669' },
-    ];
-
-    const byPriority = [
-      { name: 'Khẩn cấp', value: enhancedTasks.filter((t) => t.priority === 'urgent').length, color: '#dc2626' },
-      { name: 'Cao', value: enhancedTasks.filter((t) => t.priority === 'high').length, color: '#f97316' },
-      { name: 'TB', value: enhancedTasks.filter((t) => t.priority === 'medium').length, color: '#0891b2' },
-      { name: 'Thấp', value: enhancedTasks.filter((t) => t.priority === 'low').length, color: '#94a3b8' },
-    ];
-
-    return { total, done, inProgress, overdue, avgProgress, completionRate, byStatus, byPriority };
+  // ---- Extract unique filter options ----
+  const vaoDoiTacOptions = useMemo(() => [...new Set(doanVaoData.map((d) => d.congTyDoiTac))].sort(), []);
+  const vaoDonViOptions = useMemo(() => [...new Set(doanVaoData.map((d) => d.donVi))].sort(), []);
+  const raDoiTacOptions = useMemo(() => [...new Set(doanRaData.map((d) => d.doiTacMoi).filter(Boolean))].sort(), []);
+  const raDonViOptions = useMemo(() => [...new Set(doanRaData.map((d) => d.donVi))].sort(), []);
+  const yearOptions = useMemo(() => {
+    const years = new Set<string>();
+    doanVaoData.forEach((d) => { const m = d.congVanTongCuc.match(/\/(\d{2})$/); if (m) years.add('20' + m[1]); });
+    doanRaData.forEach((d) => { const m = d.congVanTongCuc.match(/\/(\d{2,4})$/); if (m) years.add(m[1].length === 2 ? '20' + m[1] : m[1]); });
+    years.add('2025'); years.add('2026');
+    return [...years].sort().reverse();
   }, []);
 
-  // === Staff Performance ===
-  const staffStats = useMemo(() => {
-    const staffMap: Record<string, { name: string; avatar: string; tasks: number; done: number; docs: number; avgProgress: number }> = {};
-    enhancedTasks.forEach((t) => {
-      if (!staffMap[t.assignee]) staffMap[t.assignee] = { name: t.assignee, avatar: t.assigneeAvatar, tasks: 0, done: 0, docs: 0, avgProgress: 0 };
-      staffMap[t.assignee].tasks++;
-      if (t.status === 'done') staffMap[t.assignee].done++;
-      staffMap[t.assignee].avgProgress += t.progress;
+  // ---- Filtered data ----
+  const filteredVao = useMemo(() => {
+    let data = doanVaoData;
+    if (doiTacFilterVao !== 'all') data = data.filter((d) => d.congTyDoiTac === doiTacFilterVao);
+    if (donViFilterVao !== 'all') data = data.filter((d) => d.donVi === donViFilterVao);
+    if (searchVao.trim()) {
+      const q = searchVao.toLowerCase();
+      data = data.filter((d) =>
+        d.congTyDoiTac.toLowerCase().includes(q) ||
+        d.mucDich.toLowerCase().includes(q) ||
+        d.donVi.toLowerCase().includes(q) ||
+        d.congVanTongCuc.toLowerCase().includes(q) ||
+        d.danhSachDoiTac.some((p) => p.hoTen.toLowerCase().includes(q) || p.quocTich.toLowerCase().includes(q))
+      );
+    }
+    return data;
+  }, [doiTacFilterVao, donViFilterVao, searchVao]);
+
+  const filteredRa = useMemo(() => {
+    let data = doanRaData;
+    if (doiTacFilterRa !== 'all') data = data.filter((d) => d.doiTacMoi === doiTacFilterRa);
+    if (donViFilterRa !== 'all') data = data.filter((d) => d.donVi === donViFilterRa);
+    if (searchRa.trim()) {
+      const q = searchRa.toLowerCase();
+      data = data.filter((d) =>
+        d.truongDoan.toLowerCase().includes(q) ||
+        d.mucDich.toLowerCase().includes(q) ||
+        d.nuocDi.toLowerCase().includes(q) ||
+        d.donVi.toLowerCase().includes(q) ||
+        d.doiTacMoi.toLowerCase().includes(q)
+      );
+    }
+    return data;
+  }, [doiTacFilterRa, donViFilterRa, searchRa]);
+
+  // ---- Computed stats from filtered data ----
+  const vaoStats = useMemo(() => ({
+    total: filteredVao.length,
+    totalNguoi: filteredVao.reduce((s, d) => s + d.soLuong, 0),
+    soQuocGia: new Set(filteredVao.flatMap((d) => d.danhSachDoiTac.map((p) => p.quocTich))).size,
+    byQuocGia: Object.entries(
+      filteredVao.flatMap((d) => d.danhSachDoiTac.map((p) => p.quocTich))
+        .reduce<Record<string, number>>((acc, qg) => { acc[qg] = (acc[qg] || 0) + 1; return acc; }, {})
+    ).sort((a, b) => b[1] - a[1]),
+    byDonVi: Object.entries(
+      filteredVao.reduce<Record<string, number>>((acc, d) => { acc[d.donVi] = (acc[d.donVi] || 0) + 1; return acc; }, {})
+    ).sort((a, b) => b[1] - a[1]),
+    byThang: Array.from({ length: 12 }, (_, i) => ({
+      thang: i + 1,
+      soLuong: filteredVao.filter((d) => d.thangVao === i + 1).length,
+    })),
+  }), [filteredVao]);
+
+  const raStats = useMemo(() => ({
+    total: filteredRa.length,
+    totalNguoi: filteredRa.reduce((s, d) => s + d.soLuong, 0),
+    soNuoc: new Set(filteredRa.flatMap((d) => d.nuocDi.split(/[,&]/).map((s) => s.trim())).filter(Boolean)).size,
+    byNuoc: Object.entries(
+      filteredRa.flatMap((d) => d.nuocDi.split(/[,&]/).map((s) => s.trim())).filter(Boolean)
+        .reduce<Record<string, number>>((acc, n) => { acc[n] = (acc[n] || 0) + 1; return acc; }, {})
+    ).sort((a, b) => b[1] - a[1]),
+    byDonVi: Object.entries(
+      filteredRa.reduce<Record<string, number>>((acc, d) => { acc[d.donVi] = (acc[d.donVi] || 0) + 1; return acc; }, {})
+    ).sort((a, b) => b[1] - a[1]),
+  }), [filteredRa]);
+
+  // ---- Export handlers ----
+  const handleExportVao = useCallback(() => {
+    const headers = ['TT', 'CV Tổng cục', 'CV Đơn vị', 'CV Cục Tác chiến', 'CV Cục BVAN', 'Độ mật', 'SL', 'Họ tên', 'Hộ chiếu', 'Quốc tịch', 'Tháng vào', 'Tháng về', 'TG cụ thể', 'Đơn vị', 'Công ty/Đối tác', 'Mục đích', 'Ghi chú'];
+    const rows: string[][] = [];
+    filteredVao.forEach((d) => {
+      d.danhSachDoiTac.forEach((p, i) => {
+        rows.push([
+          i === 0 ? String(d.stt) : '',
+          i === 0 ? d.congVanTongCuc : '', i === 0 ? d.congVanDonVi : '',
+          i === 0 ? d.cvCucTacChien : '', i === 0 ? d.cvCucBVAN : '',
+          i === 0 ? d.doMat : '', i === 0 ? String(d.soLuong) : '',
+          p.hoTen, p.hoChieu, p.quocTich,
+          i === 0 ? String(d.thangVao) : '', i === 0 ? String(d.thangVe) : '',
+          i === 0 ? d.thoiGianCuThe : '', i === 0 ? d.donVi : '',
+          i === 0 ? d.congTyDoiTac : '', i === 0 ? d.mucDich : '', i === 0 ? d.ghiChu : '',
+        ]);
+      });
     });
-    allDocs.forEach((d) => {
-      if (d.processorName && staffMap[d.processorName]) staffMap[d.processorName].docs++;
-    });
-    return Object.values(staffMap).map((s) => ({
-      ...s,
-      avgProgress: s.tasks > 0 ? Math.round(s.avgProgress / s.tasks) : 0,
-      completionRate: s.tasks > 0 ? Math.round((s.done / s.tasks) * 100) : 0,
-    })).sort((a, b) => b.completionRate - a.completionRate);
-  }, [allDocs]);
+    downloadCSV(`Doan_Vao_${yearFilter === 'all' ? 'TatCa' : yearFilter}.csv`, headers, rows);
+    toast.success(`Đã xuất báo cáo Đoàn vào (${filteredVao.length} đoàn) dạng CSV`);
+  }, [filteredVao, yearFilter]);
 
-  // Monthly trend mock data
-  const monthlyTrend = [
-    { month: 'T1', incoming: 120, outgoing: 85, internal: 30 },
-    { month: 'T2', incoming: 98, outgoing: 72, internal: 28 },
-    { month: 'T3', incoming: 145, outgoing: 95, internal: 42 },
-    { month: 'T4', incoming: 132, outgoing: 88, internal: 35 },
-    { month: 'T5', incoming: 156, outgoing: 102, internal: 45 },
-    { month: 'T6', incoming: 178, outgoing: 118, internal: 52 },
-    { month: 'T7', incoming: 142, outgoing: 96, internal: 38 },
-    { month: 'T8', incoming: 165, outgoing: 110, internal: 48 },
-    { month: 'T9', incoming: 189, outgoing: 125, internal: 55 },
-    { month: 'T10', incoming: 201, outgoing: 132, internal: 58 },
-    { month: 'T11', incoming: 175, outgoing: 115, internal: 50 },
-    { month: 'T12', incoming: 152, outgoing: 98, internal: 42 },
-  ];
+  const handleExportRa = useCallback(() => {
+    const headers = ['TT', 'CV Tổng cục', 'CV Đơn vị', 'Trích yếu', 'Số QĐ', 'Người nhận', 'Đơn vị', 'SL', 'Trưởng đoàn', 'Nước đi', 'TG Đi', 'TG Về', 'TG cụ thể', 'Mục đích', 'Đối tác mới', 'Ghi chú'];
+    const rows = filteredRa.map((d) => [
+      String(d.stt), d.congVanTongCuc, d.congVanDonVi, d.trichYeu, d.soQuyetDinh,
+      d.nguoiNhan, d.donVi, String(d.soLuong), d.truongDoan, d.nuocDi,
+      String(d.thoiGianDi), String(d.thoiGianVe), d.thoiGianCuThe,
+      d.mucDich, d.doiTacMoi, d.ghiChu,
+    ]);
+    downloadCSV(`Doan_Ra_${yearFilter === 'all' ? 'TatCa' : yearFilter}.csv`, headers, rows);
+    toast.success(`Đã xuất báo cáo Đoàn ra (${filteredRa.length} đoàn) dạng CSV`);
+  }, [filteredRa, yearFilter]);
 
-  // Task completion weekly mock
-  const weeklyCompletion = [
-    { week: 'Tuần 1', assigned: 12, completed: 8, overdue: 2 },
-    { week: 'Tuần 2', assigned: 15, completed: 11, overdue: 1 },
-    { week: 'Tuần 3', assigned: 18, completed: 14, overdue: 3 },
-    { week: 'Tuần 4', assigned: 10, completed: 6, overdue: 1 },
-  ];
+  const handleExportAll = useCallback(() => {
+    handleExportVao();
+    setTimeout(() => handleExportRa(), 300);
+  }, [handleExportVao, handleExportRa]);
 
-  const tabs = [
-    { key: 'overview' as ReportTab, label: 'Tổng quan', icon: BarChart3 },
-    { key: 'documents' as ReportTab, label: 'Văn bản', icon: FileText },
-    { key: 'tasks' as ReportTab, label: 'Công việc', icon: ClipboardList },
-    { key: 'staff' as ReportTab, label: 'Nhân sự', icon: Users },
-  ];
+  const clearFiltersVao = () => { setDoiTacFilterVao('all'); setDonViFilterVao('all'); setSearchVao(''); };
+  const clearFiltersRa = () => { setDoiTacFilterRa('all'); setDonViFilterRa('all'); setSearchRa(''); };
+  const hasFiltersVao = doiTacFilterVao !== 'all' || donViFilterVao !== 'all' || searchVao.trim() !== '';
+  const hasFiltersRa = doiTacFilterRa !== 'all' || donViFilterRa !== 'all' || searchRa.trim() !== '';
 
-  // Custom chart tooltip for dark mode
-  const ChartTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-card border border-border rounded-xl px-3 py-2" style={{ boxShadow: 'var(--shadow-lg)' }}>
-        <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-        {payload.map((entry: any, i: number) => (
-          <p key={i} className="text-[12px] text-foreground">
-            <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: entry.color }} />
-            {entry.name}: <span style={{ fontWeight: 500 }}>{entry.value}</span>
-          </p>
-        ))}
-      </div>
-    );
-  };
-
-  // Reduced data fallback for slow connections
-  const ReducedDataFallback = ({ label }: { label: string }) => (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <BarChart3 className="w-8 h-8 text-muted-foreground/30 mb-2" />
-      <p className="text-[12px] text-muted-foreground">Biểu đồ {label} đã tắt để tiết kiệm dữ liệu</p>
-      <p className="text-[11px] text-muted-foreground/60 mt-0.5">Tắt chế độ tiết kiệm dữ liệu để xem biểu đồ</p>
+  // ---- Mini bar chart using CSS ----
+  const MiniBar = ({ data, maxVal }: { data: { label: string; value: number }[]; maxVal: number }) => (
+    <div className="space-y-1.5">
+      {data.map((d) => (
+        <div key={d.label} className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground w-24 shrink-0 truncate text-right">{d.label}</span>
+          <div className="flex-1 h-5 bg-surface-2 rounded-md overflow-hidden relative">
+            <div className="h-full bg-primary/20 rounded-md transition-all" style={{ width: maxVal > 0 ? `${(d.value / maxVal) * 100}%` : '0%' }} />
+            <span className="absolute inset-0 flex items-center px-2 text-[11px] text-foreground" style={{ fontWeight: 500 }}>{d.value}</span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 
   return (
     <PageTransition>
       <Header title="Báo cáo & Thống kê" />
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
-        {/* Tab bar */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+
+        {/* ---- Tab bar + Global year filter ---- */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-1 bg-card rounded-xl border border-border p-1" style={{ boxShadow: 'var(--shadow-xs)' }} role="tablist" aria-label="Loại báo cáo" onKeyDown={handleReportTablistKeyDown}>
-            {tabs.map((tab) => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                role="tab"
-                aria-selected={activeTab === tab.key}
-                aria-controls={`tabpanel-${tab.key}`}
-                id={`tab-${tab.key}`}
-                tabIndex={getReportTabIndex(tab.key)}
+          <div className="flex items-center gap-1 bg-card rounded-xl border border-border p-1" style={{ boxShadow: 'var(--shadow-xs)' }}>
+            {([
+              { key: 'tong-hop' as ReportTab, label: 'Tổng hợp', icon: BarChart3 },
+              { key: 'doan-vao' as ReportTab, label: 'Đoàn vào', icon: ArrowDownToLine },
+              { key: 'doan-ra' as ReportTab, label: 'Đoàn ra', icon: ArrowUpFromLine },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] transition-all ${
                   activeTab === tab.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
                 }`}
-                style={activeTab === tab.key ? { boxShadow: 'var(--shadow-sm)' } : undefined}>
+                style={activeTab === tab.key ? { boxShadow: 'var(--shadow-sm)' } : undefined}
+              >
                 <tab.icon className="w-4 h-4" /> {tab.label}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)}
-              aria-label="Lọc theo kỳ báo cáo"
-              className="px-3 py-2 bg-surface-2 border border-border rounded-xl text-[13px] outline-none cursor-pointer text-foreground">
-              <option value="week">Tuần này</option>
-              <option value="month">Tháng này</option>
-              <option value="quarter">Quý này</option>
-              <option value="year">Năm 2026</option>
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              className="px-3 py-2 bg-surface-2 border border-border rounded-xl text-[13px] outline-none cursor-pointer text-foreground"
+            >
+              <option value="all">Tất cả năm</option>
+              {yearOptions.map((y) => <option key={y} value={y}>Năm {y}</option>)}
             </select>
-            <button className="flex items-center gap-1.5 px-3.5 py-2 bg-card border border-border rounded-xl text-[13px] text-muted-foreground hover:bg-accent transition-colors"
-              onClick={() => {
-                const tabLabel = tabs.find(t => t.key === activeTab)?.label || 'báo cáo';
-                import('sonner').then(({ toast }) => toast.success(`Đã xuất ${tabLabel} dạng PDF thành công!`));
-              }}>
-              <Download className="w-4 h-4" /> Xuất báo cáo
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border rounded-xl text-[13px] text-muted-foreground hover:bg-accent transition-colors"
+            >
+              <Printer className="w-4 h-4" /> In
+            </button>
+            <button
+              onClick={activeTab === 'doan-vao' ? handleExportVao : activeTab === 'doan-ra' ? handleExportRa : handleExportAll}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[13px] transition-colors"
+              style={{ boxShadow: 'var(--shadow-sm)' }}
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Xuất Excel
             </button>
           </div>
         </div>
 
-        {/* OVERVIEW TAB */}
-        {activeTab === 'overview' && (
-          <div className="space-y-5" role="tabpanel" id="tabpanel-overview" aria-labelledby="tab-overview">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* ==================== TỔNG HỢP ==================== */}
+        {activeTab === 'tong-hop' && (
+          <div className="space-y-4">
+            {/* Summary KPI */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Tổng văn bản', value: docStats.total, icon: FileText, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30', trend: '+12%', up: true },
-                { label: 'Đang xử lý', value: docStats.processing, icon: Activity, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30', trend: `${docStats.processing}`, up: false },
-                { label: 'Hoàn thành', value: docStats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30', trend: '+18%', up: true },
-                { label: 'Quá hạn', value: docStats.overdue, icon: AlertTriangle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/30', trend: '-25%', up: true },
-              ].map((card) => (
-                <div key={card.label} className="bg-card rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className={`w-10 h-10 rounded-lg ${card.bg} flex items-center justify-center`}>
-                      <card.icon className={`w-5 h-5 ${card.color}`} />
+                { icon: ArrowDownToLine, label: 'Đoàn vào', value: vaoStats.total, sub: `${vaoStats.totalNguoi} người`, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                { icon: ArrowUpFromLine, label: 'Đoàn ra', value: raStats.total, sub: `${raStats.totalNguoi} người`, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/20' },
+                { icon: Globe, label: 'Quốc gia đến VN', value: vaoStats.soQuocGia, sub: 'quốc tịch', color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+                { icon: Plane, label: 'Nước ta đi', value: raStats.soNuoc, sub: 'quốc gia', color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+              ].map((s) => (
+                <div key={s.label} className="p-4 rounded-xl border border-border bg-card" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
+                      <s.icon className={`w-4.5 h-4.5 ${s.color}`} />
                     </div>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full flex items-center gap-0.5 ${card.up ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
-                      {card.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                      {card.trend}
-                    </span>
+                    <div>
+                      <p className="text-[22px] text-foreground leading-none" style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>{s.value}</p>
+                      <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                    </div>
                   </div>
-                  <p className="text-[26px] text-foreground" style={{ fontFamily: "var(--font-display)" }}>{card.value}</p>
-                  <p className="text-[12px] text-muted-foreground mt-0.5">{card.label}</p>
+                  <p className="text-[12px] text-muted-foreground ml-12">{s.sub}</p>
                 </div>
               ))}
             </div>
 
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              <div className="lg:col-span-2 bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-1" style={{ fontFamily: "var(--font-display)" }}>Xu hướng văn bản theo tháng</h3>
-                <p className="text-[12px] text-muted-foreground mb-4">So sánh VB đến, đi, nội bộ qua các tháng</p>
-                <div role="img" aria-label="Biểu đồ xu hướng văn bản đến, đi, nội bộ qua 12 tháng">
-                {reducedData ? <ReducedDataFallback label="xu hướng" /> : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart id="reports-area-monthly" data={monthlyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                    <Area type="monotone" dataKey="incoming" stroke="#1e40af" fill="#1e40af" fillOpacity={0.1} strokeWidth={2} name="VB Đến" />
-                    <Area type="monotone" dataKey="outgoing" stroke="#059669" fill="#059669" fillOpacity={0.1} strokeWidth={2} name="VB Đi" />
-                    <Area type="monotone" dataKey="internal" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.06} strokeWidth={2} strokeDasharray="4 2" name="Nội bộ" />
-                  </AreaChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-              </div>
-
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-1" style={{ fontFamily: "var(--font-display)" }}>Phân loại văn bản</h3>
-                <p className="text-[12px] text-muted-foreground mb-3">Theo loại hình văn bản</p>
-                <div role="img" aria-label={`Biểu đồ tròn phân loại: ${docStats.byType.map(t => `${t.name} ${t.value}`).join(', ')}`}>
-                {reducedData ? <ReducedDataFallback label="phân loại" /> : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart id="reports-pie-bytype">
-                    <Pie data={docStats.byType} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
-                      {docStats.byType.map((entry, i) => <Cell key={`reports-bytype-cell-${i}`} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-                <div className="space-y-2 mt-2">
-                  {docStats.byType.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between text-[12px]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-muted-foreground">{item.name}</span>
-                      </div>
-                      <span className="text-foreground">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Task completion chart */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-1" style={{ fontFamily: "var(--font-display)" }}>Tiến độ công việc theo tuần</h3>
-                <p className="text-[12px] text-muted-foreground mb-4">Tháng 3/2026</p>
-                <div role="img" aria-label="Biểu đồ tiến độ công việc theo tuần, tháng 3/2026">
-                {reducedData ? <ReducedDataFallback label="tiến độ" /> : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart id="reports-bar-weekly" data={weeklyCompletion} barGap={4}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="assigned" fill="#1e40af" radius={[4, 4, 0, 0]} barSize={20} name="Giao" />
-                    <Bar dataKey="completed" fill="#059669" radius={[4, 4, 0, 0]} barSize={20} name="Hoàn thành" />
-                    <Bar dataKey="overdue" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={20} name="Quá hạn" />
-                  </BarChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-              </div>
-
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-1" style={{ fontFamily: "var(--font-display)" }}>Trạng thái công việc</h3>
-                <p className="text-[12px] text-muted-foreground mb-3">Phân bố theo trạng thái</p>
-                <div role="img" aria-label={`Biểu đồ trạng thái: ${taskStats.byStatus.map(s => `${s.name} ${s.value}`).join(', ')}`}>
-                {reducedData ? <ReducedDataFallback label="trạng thái" /> : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart id="reports-pie-taskstatus">
-                    <Pie data={taskStats.byStatus} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
-                      {taskStats.byStatus.map((entry, i) => <Cell key={`task-status-cell-${i}`} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {taskStats.byStatus.map((item) => (
-                    <div key={item.name} className="flex items-center gap-2 text-[12px]">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-muted-foreground">{item.name}</span>
-                      <span className="text-foreground ml-auto">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* DOCUMENTS TAB */}
-        {activeTab === 'documents' && (
-          <div className="space-y-5" role="tabpanel" id="tabpanel-documents" aria-labelledby="tab-documents">
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              {docStats.byPriority.map((p) => (
-                <div key={p.name} className="bg-card rounded-xl border border-border p-4 text-center">
-                  <p className="text-[22px] text-foreground tabular-nums" style={{ fontFamily: "var(--font-display)" }}>{p.value}</p>
-                  <p className="text-[12px] text-muted-foreground flex items-center justify-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />{p.name}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-4" style={{ fontFamily: "var(--font-display)" }}>Theo loại văn bản</h3>
-                <div role="img" aria-label="Biểu đồ phân bố văn bản theo loại">
-                {reducedData ? <ReducedDataFallback label="phân bố" /> : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart id="reports-bar-doccat" data={docStats.byCategoryArr} layout="vertical" barSize={18}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={90} />
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                    <Bar dataKey="value" fill="#1e40af" radius={[0, 6, 6, 0]} name="Số lượng" />
-                  </BarChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-              </div>
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-4" style={{ fontFamily: "var(--font-display)" }}>Theo lĩnh vực</h3>
-                <div role="img" aria-label="Biểu đồ tròn phân bố văn bản theo lĩnh vực">
-                {reducedData ? <ReducedDataFallback label="lĩnh vực" /> : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <PieChart id="reports-pie-field">
-                    <Pie data={docStats.byFieldArr} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
-                      {docStats.byFieldArr.map((_, i) => <Cell key={`doc-field-cell-${i}`} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TASKS TAB */}
-        {activeTab === 'tasks' && (
-          <div className="space-y-5" role="tabpanel" id="tabpanel-tasks" aria-labelledby="tab-tasks">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { label: 'Tổng công việc', value: taskStats.total, icon: ClipboardList, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30' },
-                { label: 'Tỷ lệ hoàn thành', value: `${taskStats.completionRate}%`, icon: Target, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
-                { label: 'TB tiến độ', value: `${taskStats.avgProgress}%`, icon: Activity, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/30' },
-                { label: 'Quá hạn', value: taskStats.overdue, icon: AlertTriangle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/30' },
-              ].map((card) => (
-                <div key={card.label} className="bg-card rounded-xl border border-border p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-lg ${card.bg} flex items-center justify-center`}>
-                      <card.icon className={`w-5 h-5 ${card.color}`} />
-                    </div>
-                    <p className="text-[12px] text-muted-foreground">{card.label}</p>
-                  </div>
-                  <p className="text-[26px] text-foreground" style={{ fontFamily: "var(--font-display)" }}>{card.value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-4" style={{ fontFamily: "var(--font-display)" }}>Theo mức độ ưu tiên</h3>
-                <div role="img" aria-label="Biểu đồ công việc theo mức độ ưu tiên">
-                {reducedData ? <ReducedDataFallback label="ưu tiên" /> : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart id="reports-bar-priority" data={taskStats.byPriority} barSize={32}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                    <Bar dataKey="value" radius={[6, 6, 0, 0]} name="Số lượng">
-                      {taskStats.byPriority.map((entry, i) => <Cell key={`task-priority-cell-${i}`} fill={entry.color} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                )}
-                </div>
-              </div>
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-foreground text-[14px] mb-4" style={{ fontFamily: "var(--font-display)" }}>Tiến độ từng công việc</h3>
-                <div className="space-y-3 max-h-[280px] overflow-y-auto">
-                  {enhancedTasks.map((task) => (
-                    <div key={task.id} className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/80 to-blue-400 flex items-center justify-center text-white text-[8px] shrink-0">{task.assigneeAvatar}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] text-foreground truncate">{task.title}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 bg-muted rounded-full h-2" role="progressbar" aria-valuenow={task.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`Tiến độ ${task.title}: ${task.progress}%`}>
-                            <div className={`h-2 rounded-full transition-all ${task.progress === 100 ? 'bg-emerald-500' : task.progress >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
-                              style={{ width: `${task.progress}%` }} />
-                          </div>
-                          <span className="text-[11px] text-muted-foreground w-8 text-right">{task.progress}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* STAFF TAB */}
-        {activeTab === 'staff' && (
-          <div className="space-y-5" role="tabpanel" id="tabpanel-staff" aria-labelledby="tab-staff">
-            <div className="bg-card rounded-xl border border-border overflow-hidden">
-              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-                <h3 className="text-foreground text-[14px]" style={{ fontFamily: "var(--font-display)" }}>Hiệu suất làm việc cán bộ</h3>
-                <div className="flex items-center gap-2">
-                  <ColumnToggle
-                    isOpen={staffColVis.isOpen}
-                    setIsOpen={staffColVis.setIsOpen}
-                    columns={staffColVis.columns}
-                    isVisible={staffColVis.isVisible}
-                    toggle={staffColVis.toggle}
-                    resetAll={staffColVis.resetAll}
-                    showOnlyRequired={staffColVis.showOnlyRequired}
-                    hideAllOptional={staffColVis.hideAllOptional}
-                    allOptionalVisible={staffColVis.allOptionalVisible}
-                    allOptionalHidden={staffColVis.allOptionalHidden}
-                    handleMenuKeyDown={staffColVis.handleMenuKeyDown}
-                    visibleCount={staffColVis.visibleCount}
-                    totalCount={staffColVis.totalCount}
-                    hasHidden={staffColVis.hasHidden}
-                    announcement={staffColVis.announcement}
+            {/* Charts side by side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Đoàn vào theo Quốc gia */}
+              <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                <h3 className="text-[13px] text-foreground mb-3 flex items-center gap-2" style={{ fontWeight: 600 }}>
+                  <Ship className="w-4 h-4 text-blue-600" /> Đoàn vào — theo Quốc tịch
+                </h3>
+                {vaoStats.byQuocGia.length > 0 ? (
+                  <MiniBar
+                    data={vaoStats.byQuocGia.map(([label, value]) => ({ label, value }))}
+                    maxVal={Math.max(...vaoStats.byQuocGia.map(([, v]) => v))}
                   />
-                  <ResetWidthsButton isResized={staffColResize.isResized} onReset={staffColResize.resetWidths} />
-                  {staffColOrder.isReordered && (
-                    <button onClick={staffColOrder.resetOrder} className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors" aria-label="Đặt lại thứ tự cột">
-                      <Activity className="w-3 h-3" /> Đặt lại thứ tự
-                    </button>
-                  )}
-                  <button onClick={() => { import('sonner').then(({ toast }) => toast.success('Đã xuất bảng hiệu suất nhân sự dạng Excel!')); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-input-background rounded-lg text-[12px] text-muted-foreground hover:bg-muted">
-                    <Download className="w-3.5 h-3.5" /> Xuất
-                  </button>
+                ) : (
+                  <p className="text-[12px] text-muted-foreground text-center py-6">Không có dữ liệu</p>
+                )}
+              </div>
+
+              {/* Đoàn ra theo Nước */}
+              <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                <h3 className="text-[13px] text-foreground mb-3 flex items-center gap-2" style={{ fontWeight: 600 }}>
+                  <Plane className="w-4 h-4 text-orange-600" /> Đoàn ra — theo Nước đến
+                </h3>
+                {raStats.byNuoc.length > 0 ? (
+                  <MiniBar
+                    data={raStats.byNuoc.map(([label, value]) => ({ label, value }))}
+                    maxVal={Math.max(...raStats.byNuoc.map(([, v]) => v))}
+                  />
+                ) : (
+                  <p className="text-[12px] text-muted-foreground text-center py-6">Không có dữ liệu</p>
+                )}
+              </div>
+
+              {/* Đoàn vào theo Đơn vị */}
+              <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                <h3 className="text-[13px] text-foreground mb-3 flex items-center gap-2" style={{ fontWeight: 600 }}>
+                  <Building2 className="w-4 h-4 text-blue-600" /> Đoàn vào — theo Đơn vị tiếp nhận
+                </h3>
+                {vaoStats.byDonVi.length > 0 ? (
+                  <MiniBar
+                    data={vaoStats.byDonVi.map(([label, value]) => ({ label, value }))}
+                    maxVal={Math.max(...vaoStats.byDonVi.map(([, v]) => v))}
+                  />
+                ) : (
+                  <p className="text-[12px] text-muted-foreground text-center py-6">Không có dữ liệu</p>
+                )}
+              </div>
+
+              {/* Đoàn ra theo Đơn vị */}
+              <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                <h3 className="text-[13px] text-foreground mb-3 flex items-center gap-2" style={{ fontWeight: 600 }}>
+                  <Building2 className="w-4 h-4 text-orange-600" /> Đoàn ra — theo Đơn vị cử
+                </h3>
+                {raStats.byDonVi.length > 0 ? (
+                  <MiniBar
+                    data={raStats.byDonVi.map(([label, value]) => ({ label, value }))}
+                    maxVal={Math.max(...raStats.byDonVi.map(([, v]) => v))}
+                  />
+                ) : (
+                  <p className="text-[12px] text-muted-foreground text-center py-6">Không có dữ liệu</p>
+                )}
+              </div>
+            </div>
+
+            {/* Monthly timeline for Đoàn vào */}
+            <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+              <h3 className="text-[13px] text-foreground mb-3 flex items-center gap-2" style={{ fontWeight: 600 }}>
+                <CalendarDays className="w-4 h-4 text-primary" /> Đoàn vào — theo Tháng
+              </h3>
+              <div className="flex items-end gap-1.5 h-24">
+                {vaoStats.byThang.map((m) => {
+                  const maxH = Math.max(...vaoStats.byThang.map((x) => x.soLuong), 1);
+                  const h = m.soLuong > 0 ? Math.max((m.soLuong / maxH) * 100, 12) : 4;
+                  return (
+                    <div key={m.thang} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full flex items-end justify-center" style={{ height: 80 }}>
+                        <div
+                          className={`w-full max-w-[28px] rounded-t-md transition-all ${m.soLuong > 0 ? 'bg-primary/70' : 'bg-muted/30'}`}
+                          style={{ height: `${h}%` }}
+                          title={`T${m.thang}: ${m.soLuong} đoàn`}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">T{m.thang}</span>
+                      {m.soLuong > 0 && <span className="text-[10px] text-foreground" style={{ fontWeight: 600 }}>{m.soLuong}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick summary tables */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Recent Đoàn vào */}
+              <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[13px] text-foreground flex items-center gap-2" style={{ fontWeight: 600 }}>
+                    <ArrowDownToLine className="w-4 h-4 text-blue-600" /> Đoàn vào gần đây
+                  </h3>
+                  <button onClick={() => setActiveTab('doan-vao')} className="text-[11px] text-primary hover:underline">Xem tất cả</button>
+                </div>
+                <div className="space-y-2">
+                  {filteredVao.slice(0, 5).map((d) => (
+                    <div key={d.id} className="flex items-center gap-3 p-2.5 bg-surface-2 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] text-foreground truncate" style={{ fontWeight: 500 }}>{d.congTyDoiTac}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{d.mucDich}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[12px] text-foreground" style={{ fontWeight: 600 }}>{d.soLuong} người</p>
+                        <p className="text-[10px] text-muted-foreground">{d.thoiGianCuThe}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="overflow-auto max-h-[65vh]">
-                <table ref={staffTableRef} className="w-full" style={{ tableLayout: 'fixed' }} aria-rowcount={staffStats.length + 1}>
-                  <caption className="sr-only">Báo cáo chi tiết văn bản theo phòng ban</caption>
-                  <thead className="sticky-header">
-                    <tr className="bg-accent/30">
-                      {staffOrderedVisibleCols.map((colKey, idx) => {
-                        const colIdx = idx + 1;
-                        const headerLabels: Record<StaffColKey, string> = {
-                          name: 'CÁN BỘ', tasks: 'CÔNG VIỆC', done: 'HOÀN THÀNH',
-                          docs: 'VĂN BẢN XỬ LÝ', rate: 'TỶ LỆ', progress: 'TB TIẾN ĐỘ',
-                        };
-                        const alignClass = colKey === 'name' || colKey === 'progress' ? 'text-left' : 'text-center';
-                        return (
-                          <DraggableHeader key={colKey} colKey={colKey} index={staffColOrder.getColumnIndex(colKey)} onMove={staffColOrder.moveColumn} onKeyboardMove={(k, d) => staffColOrder.moveColumnByKey(k as StaffColKey, d)}
-                            scope="col" role="columnheader" aria-colindex={colIdx} tabIndex={0}
-                            title="Alt+← → để di chuyển cột"
-                            className={`relative ${alignClass} px-5 py-3 text-[11px] text-muted-foreground`} style={staffColResize.getHeaderProps(colKey).style}>
-                            {headerLabels[colKey]}
-                            <ResizeHandle onResizeStart={(e) => staffColResize.onResizeStart(colKey, e)} onDoubleClick={() => staffColResize.autoFit(colKey, staffTableRef.current)} onKeyboardResize={(d) => staffColResize.keyboardResize(colKey, d)} />
-                          </DraggableHeader>
-                        );
-                      })}
+
+              {/* Recent Đoàn ra */}
+              <div className="bg-card rounded-xl border border-border p-4" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[13px] text-foreground flex items-center gap-2" style={{ fontWeight: 600 }}>
+                    <ArrowUpFromLine className="w-4 h-4 text-orange-600" /> Đoàn ra gần đây
+                  </h3>
+                  <button onClick={() => setActiveTab('doan-ra')} className="text-[11px] text-primary hover:underline">Xem tất cả</button>
+                </div>
+                <div className="space-y-2">
+                  {filteredRa.slice(0, 5).map((d) => (
+                    <div key={d.id} className="flex items-center gap-3 p-2.5 bg-surface-2 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] text-foreground truncate" style={{ fontWeight: 500 }}>{d.truongDoan}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{d.nuocDi} — {d.mucDich}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[12px] text-foreground" style={{ fontWeight: 600 }}>{d.soLuong} người</p>
+                        <p className="text-[10px] text-muted-foreground">{d.thoiGianCuThe}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== ĐOÀN VÀO ==================== */}
+        {activeTab === 'doan-vao' && (
+          <div className="space-y-4">
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { icon: Ship, label: 'Tổng đoàn vào', value: vaoStats.total, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                { icon: Users, label: 'Tổng người', value: vaoStats.totalNguoi, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+                { icon: Globe, label: 'Quốc gia', value: vaoStats.soQuocGia, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+              ].map((s) => (
+                <div key={s.label} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                  <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
+                    <s.icon className={`w-4.5 h-4.5 ${s.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-[18px] text-foreground" style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>{s.value}</p>
+                    <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Filters */}
+            <div className="bg-card rounded-xl border border-border p-3" style={{ boxShadow: 'var(--shadow-xs)' }}>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[180px] max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
+                  <input
+                    type="text"
+                    placeholder="Tìm đối tác, đơn vị, mục đích..."
+                    value={searchVao}
+                    onChange={(e) => setSearchVao(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-surface-2 rounded-xl text-[13px] border border-transparent focus:border-primary/20 outline-none transition-all"
+                  />
+                </div>
+                <select
+                  value={doiTacFilterVao}
+                  onChange={(e) => setDoiTacFilterVao(e.target.value)}
+                  className="px-3 py-2 bg-surface-2 rounded-xl text-[13px] border border-transparent focus:border-primary/20 outline-none cursor-pointer max-w-[220px]"
+                >
+                  <option value="all">Tất cả đối tác</option>
+                  {vaoDoiTacOptions.map((dt) => <option key={dt} value={dt}>{dt.length > 35 ? dt.slice(0, 35) + '...' : dt}</option>)}
+                </select>
+                <select
+                  value={donViFilterVao}
+                  onChange={(e) => setDonViFilterVao(e.target.value)}
+                  className="px-3 py-2 bg-surface-2 rounded-xl text-[13px] border border-transparent focus:border-primary/20 outline-none cursor-pointer"
+                >
+                  <option value="all">Tất cả đơn vị</option>
+                  {vaoDonViOptions.map((dv) => <option key={dv} value={dv}>{dv}</option>)}
+                </select>
+                {hasFiltersVao && (
+                  <button onClick={clearFiltersVao} className="flex items-center gap-1 px-2.5 py-2 text-[12px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                    <X className="w-3.5 h-3.5" /> Xóa bộ lọc
+                  </button>
+                )}
+                <span className="text-[12px] text-muted-foreground ml-auto">
+                  {filteredVao.length} / {doanVaoData.length} đoàn
+                </span>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div className="text-center py-1 print:py-4">
+              <h2 className="text-[17px] text-foreground" style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>
+                ĐOÀN VÀO {yearFilter !== 'all' ? `NĂM ${yearFilter}` : ''}
+              </h2>
+              {hasFiltersVao && (
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  (Lọc: {doiTacFilterVao !== 'all' ? doiTacFilterVao : ''} {donViFilterVao !== 'all' ? `— ĐV: ${donViFilterVao}` : ''} {searchVao ? `— "${searchVao}"` : ''})
+                </p>
+              )}
+            </div>
+
+            {/* Table */}
+            <div className="bg-card rounded-xl border border-border overflow-hidden" style={{ boxShadow: 'var(--shadow-xs)' }}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px] border-collapse" aria-label="Báo cáo đoàn vào">
+                  <thead>
+                    <tr className="bg-surface-2/80 text-left">
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 text-center whitespace-nowrap w-10">TT</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[120px]">CV Tổng cục</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[110px]">CV đơn vị</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[110px] bg-amber-50/60 dark:bg-amber-900/10">CV Cục Tác chiến</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[110px] bg-amber-50/60 dark:bg-amber-900/10">CV Cục BVAN</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">Độ mật</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">SL</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[140px]">Họ tên đối tác</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[90px]">Hộ chiếu</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap">Quốc tịch</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">T. vào</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">T. về</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap">TG cụ thể</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap">Đơn vị</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[140px]">Công ty, Đối tác</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 min-w-[200px]">Mục đích</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[100px]">Ghi chú</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {staffStats.map((staff, idx) => (
-                      <tr key={staff.name} aria-rowindex={idx + 2} className="border-b border-border/50 hover:bg-accent/20 transition-colors">
-                        {staffOrderedVisibleCols.map((colKey) => {
-                          switch (colKey) {
-                            case 'name': return (
-                              <td key="name" className="px-5 py-3.5">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/80 to-blue-400 flex items-center justify-center text-white text-[10px]">{staff.avatar}</div>
-                                  <span className="text-[13px] text-foreground">{staff.name}</span>
-                                </div>
-                              </td>
-                            );
-                            case 'tasks': return <td key="tasks" className="px-5 py-3.5 text-center text-[13px] text-foreground">{staff.tasks}</td>;
-                            case 'done': return <td key="done" className="px-5 py-3.5 text-center text-[13px] text-emerald-600">{staff.done}</td>;
-                            case 'docs': return <td key="docs" className="px-5 py-3.5 text-center text-[13px] text-foreground">{staff.docs}</td>;
-                            case 'rate': return (
-                              <td key="rate" className="px-5 py-3.5 text-center">
-                                <span className={`text-[12px] px-2 py-0.5 rounded-full ${
-                                  staff.completionRate >= 75 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' :
-                                  staff.completionRate >= 50 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' :
-                                  'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                                }`}>{staff.completionRate}%</span>
-                              </td>
-                            );
-                            case 'progress': return (
-                              <td key="progress" className="px-5 py-3.5">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 bg-muted rounded-full h-2" role="progressbar" aria-valuenow={staff.avgProgress} aria-valuemin={0} aria-valuemax={100} aria-label={`Tiến độ trung bình ${staff.name}: ${staff.avgProgress}%`}>
-                                    <div className={`h-2 rounded-full ${staff.avgProgress >= 75 ? 'bg-emerald-500' : staff.avgProgress >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
-                                      style={{ width: `${staff.avgProgress}%` }} />
-                                  </div>
-                                  <span className="text-[11px] text-muted-foreground w-8 text-right">{staff.avgProgress}%</span>
-                                </div>
-                              </td>
-                            );
-                            default: return null;
-                          }
-                        })}
+                    {filteredVao.map((d) => {
+                      const rowSpan = d.danhSachDoiTac.length || 1;
+                      return d.danhSachDoiTac.map((person, pIdx) => (
+                        <tr key={`${d.id}-${pIdx}`} className="border-b border-border/40 hover:bg-accent/30 transition-colors">
+                          {pIdx === 0 && (
+                            <>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-center text-foreground border border-border/30 align-top">{d.stt}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top">{d.congVanTongCuc}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top">{d.congVanDonVi}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top bg-amber-50/40 dark:bg-amber-900/10">{d.cvCucTacChien}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top bg-amber-50/40 dark:bg-amber-900/10">{d.cvCucBVAN}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-center text-foreground border border-border/30 align-top">{d.doMat}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-center text-foreground border border-border/30 align-top" style={{ fontWeight: 600 }}>{d.soLuong}</td>
+                            </>
+                          )}
+                          <td className="px-2 py-1.5 text-foreground border border-border/30">{person.hoTen}</td>
+                          <td className="px-2 py-1.5 text-muted-foreground border border-border/30 font-mono text-[11px]">{person.hoChieu}</td>
+                          <td className="px-2 py-1.5 text-muted-foreground border border-border/30">{person.quocTich}</td>
+                          {pIdx === 0 && (
+                            <>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-center text-foreground border border-border/30 align-top">{d.thangVao}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-center text-foreground border border-border/30 align-top">{d.thangVe}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top">{d.thoiGianCuThe}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top">{d.donVi}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top">{d.congTyDoiTac}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-foreground border border-border/30 align-top">{d.mucDich}</td>
+                              <td rowSpan={rowSpan} className="px-2 py-2 text-muted-foreground border border-border/30 align-top">{d.ghiChu}</td>
+                            </>
+                          )}
+                        </tr>
+                      ));
+                    })}
+                    {filteredVao.length === 0 && (
+                      <tr>
+                        <td colSpan={17} className="text-center py-12 text-muted-foreground">
+                          <Filter className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                          Không có dữ liệu phù hợp
+                        </td>
                       </tr>
-                    ))}
+                    )}
+                    {/* Footer tổng */}
+                    {filteredVao.length > 0 && (
+                      <tr className="bg-surface-2/60 border-t-2 border-border">
+                        <td colSpan={6} className="px-2 py-2.5 text-[12px] text-foreground border border-border/30 text-right" style={{ fontWeight: 600 }}>TỔNG CỘNG</td>
+                        <td className="px-2 py-2.5 text-center text-foreground border border-border/30 text-[13px]" style={{ fontWeight: 700 }}>{vaoStats.totalNguoi}</td>
+                        <td colSpan={10} className="px-2 py-2.5 text-[12px] text-muted-foreground border border-border/30">
+                          {filteredVao.length} đoàn — {vaoStats.soQuocGia} quốc gia
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Staff workload chart */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h3 className="text-foreground text-[14px] mb-4" style={{ fontFamily: "var(--font-display)" }}>Khối lượng công việc</h3>
-              <div role="img" aria-label="Biểu đồ khối lượng công việc nhân sự">
-              {reducedData ? <ReducedDataFallback label="khối lượng" /> : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart id="reports-bar-staff" data={staffStats} layout="vertical" barGap={4}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={120} />
-                  <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
-                  <Bar dataKey="tasks" fill="#1e40af" radius={[0, 4, 4, 0]} barSize={14} name="Tổng CV" />
-                  <Bar dataKey="done" fill="#059669" radius={[0, 4, 4, 0]} barSize={14} name="Hoàn thành" />
-                </BarChart>
-              </ResponsiveContainer>
+        {/* ==================== ĐOÀN RA ==================== */}
+        {activeTab === 'doan-ra' && (
+          <div className="space-y-4">
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { icon: Plane, label: 'Tổng đoàn ra', value: raStats.total, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/20' },
+                { icon: Users, label: 'Tổng người', value: raStats.totalNguoi, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                { icon: Globe, label: 'Nước đến', value: raStats.soNuoc, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+              ].map((s) => (
+                <div key={s.label} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card" style={{ boxShadow: 'var(--shadow-xs)' }}>
+                  <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
+                    <s.icon className={`w-4.5 h-4.5 ${s.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-[18px] text-foreground" style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>{s.value}</p>
+                    <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Filters */}
+            <div className="bg-card rounded-xl border border-border p-3" style={{ boxShadow: 'var(--shadow-xs)' }}>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[180px] max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
+                  <input
+                    type="text"
+                    placeholder="Tìm trưởng đoàn, đơn vị, nước đến..."
+                    value={searchRa}
+                    onChange={(e) => setSearchRa(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-surface-2 rounded-xl text-[13px] border border-transparent focus:border-primary/20 outline-none transition-all"
+                  />
+                </div>
+                <select
+                  value={doiTacFilterRa}
+                  onChange={(e) => setDoiTacFilterRa(e.target.value)}
+                  className="px-3 py-2 bg-surface-2 rounded-xl text-[13px] border border-transparent focus:border-primary/20 outline-none cursor-pointer max-w-[220px]"
+                >
+                  <option value="all">Tất cả đối tác</option>
+                  {raDoiTacOptions.map((dt) => <option key={dt} value={dt}>{dt.length > 35 ? dt.slice(0, 35) + '...' : dt}</option>)}
+                </select>
+                <select
+                  value={donViFilterRa}
+                  onChange={(e) => setDonViFilterRa(e.target.value)}
+                  className="px-3 py-2 bg-surface-2 rounded-xl text-[13px] border border-transparent focus:border-primary/20 outline-none cursor-pointer"
+                >
+                  <option value="all">Tất cả đơn vị</option>
+                  {raDonViOptions.map((dv) => <option key={dv} value={dv}>{dv}</option>)}
+                </select>
+                {hasFiltersRa && (
+                  <button onClick={clearFiltersRa} className="flex items-center gap-1 px-2.5 py-2 text-[12px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                    <X className="w-3.5 h-3.5" /> Xóa bộ lọc
+                  </button>
+                )}
+                <span className="text-[12px] text-muted-foreground ml-auto">
+                  {filteredRa.length} / {doanRaData.length} đoàn
+                </span>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div className="text-center py-1 print:py-4">
+              <h2 className="text-[17px] text-foreground" style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>
+                ĐOÀN RA {yearFilter !== 'all' ? `NĂM ${yearFilter}` : ''}
+              </h2>
+              {hasFiltersRa && (
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  (Lọc: {doiTacFilterRa !== 'all' ? doiTacFilterRa : ''} {donViFilterRa !== 'all' ? `— ĐV: ${donViFilterRa}` : ''} {searchRa ? `— "${searchRa}"` : ''})
+                </p>
               )}
+            </div>
+
+            {/* Table */}
+            <div className="bg-card rounded-xl border border-border overflow-hidden" style={{ boxShadow: 'var(--shadow-xs)' }}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px] border-collapse" aria-label="Báo cáo đoàn ra">
+                  <thead>
+                    <tr className="bg-surface-2/80 text-left">
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 text-center whitespace-nowrap w-10">TT</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[120px]">CV Tổng cục</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[120px]">CV Đơn vị</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[140px]">Trích yếu</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[120px]">Số quyết định</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap">Người nhận</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap">Đơn vị</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">SL</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 min-w-[200px]">Trưởng đoàn</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[120px]">Nước đi</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">TG Đi</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap text-center">TG Về</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[100px]">TG cụ thể</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 min-w-[200px]">Mục đích</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[130px]">Đối tác mới</th>
+                      <th className="px-2 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wide border border-border/50 whitespace-nowrap min-w-[100px]">Ghi chú</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRa.map((d) => (
+                      <tr key={d.id} className="border-b border-border/40 hover:bg-accent/30 transition-colors">
+                        <td className="px-2 py-2.5 text-center text-foreground border border-border/30">{d.stt}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.congVanTongCuc}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.congVanDonVi}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.trichYeu}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.soQuyetDinh || '—'}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.nguoiNhan}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.donVi}</td>
+                        <td className="px-2 py-2.5 text-center text-foreground border border-border/30" style={{ fontWeight: 600 }}>{d.soLuong}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.truongDoan}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.nuocDi}</td>
+                        <td className="px-2 py-2.5 text-center text-foreground border border-border/30">{d.thoiGianDi}</td>
+                        <td className="px-2 py-2.5 text-center text-foreground border border-border/30">{d.thoiGianVe}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.thoiGianCuThe}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.mucDich}</td>
+                        <td className="px-2 py-2.5 text-foreground border border-border/30">{d.doiTacMoi}</td>
+                        <td className="px-2 py-2.5 text-muted-foreground border border-border/30">{d.ghiChu || '—'}</td>
+                      </tr>
+                    ))}
+                    {filteredRa.length === 0 && (
+                      <tr>
+                        <td colSpan={16} className="text-center py-12 text-muted-foreground">
+                          <Filter className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                          Không có dữ liệu phù hợp
+                        </td>
+                      </tr>
+                    )}
+                    {/* Footer tổng */}
+                    {filteredRa.length > 0 && (
+                      <tr className="bg-surface-2/60 border-t-2 border-border">
+                        <td colSpan={7} className="px-2 py-2.5 text-[12px] text-foreground border border-border/30 text-right" style={{ fontWeight: 600 }}>TỔNG CỘNG</td>
+                        <td className="px-2 py-2.5 text-center text-foreground border border-border/30 text-[13px]" style={{ fontWeight: 700 }}>{raStats.totalNguoi}</td>
+                        <td colSpan={8} className="px-2 py-2.5 text-[12px] text-muted-foreground border border-border/30">
+                          {filteredRa.length} đoàn — {raStats.soNuoc} quốc gia
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         )}
-      </div>
-
-      {/* Column order announcement live region */}
-      <div className="sr-only" aria-live="polite" aria-atomic="true" role="status">
-        {staffColOrder.announcement}
       </div>
     </PageTransition>
   );

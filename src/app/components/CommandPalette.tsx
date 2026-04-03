@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Search, FileInput, FileOutput, FileText, ClipboardList, Calendar,
-  BookOpen, Bell, BarChart3, Settings, Users, Building2, FolderCog,
-  LayoutDashboard, ArrowRight, Command, Hash,
+  Search, Calendar, ScanSearch, Bell, BarChart3, Settings,
+  Users, FolderCog, LayoutDashboard, ArrowRight,
+  Command, Hash, UserSearch,
 } from 'lucide-react';
 
 interface CommandItem {
@@ -17,19 +17,13 @@ interface CommandItem {
 }
 
 const commands: CommandItem[] = [
-  { id: 'dashboard', label: 'Tổng quan', description: 'Bảng điều khiển chính', icon: LayoutDashboard, path: '/', group: 'Điều hướng' },
-  { id: 'incoming', label: 'Văn bản đến', description: 'Quản lý văn bản đến', icon: FileInput, path: '/incoming', group: 'Văn bản' },
-  { id: 'outgoing', label: 'Văn bản đi', description: 'Quản lý văn bản đi', icon: FileOutput, path: '/outgoing', group: 'Văn bản' },
-  { id: 'internal', label: 'Văn bản nội bộ', description: 'Quản lý văn bản nội bộ', icon: FileText, path: '/internal', group: 'Văn bản' },
-  { id: 'tasks', label: 'Công việc', description: 'Quản lý & theo dõi công việc', icon: ClipboardList, path: '/tasks', group: 'Công việc' },
-  { id: 'calendar', label: 'Lịch làm việc', description: 'Lịch họp & sự kiện', icon: Calendar, path: '/calendar', group: 'Công việc' },
-  { id: 'docbook', label: 'Sổ văn bản & Lưu trữ', description: 'Sổ đăng ký văn bản', icon: BookOpen, path: '/document-book', group: 'Lưu trữ' },
-  { id: 'notifications', label: 'Thông báo', description: 'Xem tất cả thông báo', icon: Bell, path: '/notifications', group: 'Hệ thống' },
-  { id: 'reports', label: 'Báo cáo & Thống kê', description: 'Phân tích dữ liệu', icon: BarChart3, path: '/reports', group: 'Báo cáo' },
-  { id: 'search', label: 'Tìm kiếm nâng cao', description: 'Tìm kiếm toàn hệ thống', icon: Search, path: '/search', group: 'Hệ thống' },
+  { id: 'dashboard', label: 'Tổng quan', description: 'Dashboard + Lịch trực quan đoàn ra vào', icon: LayoutDashboard, path: '/', group: 'Điều hành' },
+  { id: 'partner-dossier', label: 'Lý lịch Đối tác', description: 'Thông tin, hợp đồng, quà tặng', icon: UserSearch, path: '/partner-dossier', group: 'Nghiệp vụ' },
+  { id: 'delegations', label: 'Quản lý Đoàn vào', description: 'Công văn, nhân sự, xuất mẫu Word', icon: Users, path: '/delegations', group: 'Nghiệp vụ' },
+  { id: 'archive', label: 'Kho số hóa (OCR)', description: 'Tra cứu nội dung văn bản', icon: ScanSearch, path: '/archive', group: 'Dữ liệu' },
+  { id: 'reports', label: 'Báo cáo & Thống kê', description: 'Xuất báo cáo Excel', icon: BarChart3, path: '/reports', group: 'Dữ liệu' },
+  { id: 'notifications', label: 'Cảnh báo', description: 'Cảnh báo & thông báo hệ thống', icon: Bell, path: '/notifications', group: 'Hệ thống' },
   { id: 'settings', label: 'Cài đặt', description: 'Tùy chỉnh hệ thống', icon: Settings, path: '/settings', group: 'Quản trị' },
-  { id: 'users', label: 'Quản lý người dùng', description: 'Tài khoản & phân quyền', icon: Users, path: '/users', group: 'Quản trị' },
-  { id: 'org', label: 'Cơ cấu tổ chức', description: 'Phòng ban & đơn vị', icon: Building2, path: '/organization', group: 'Quản trị' },
   { id: 'categories', label: 'Danh mục', description: 'Quản lý danh mục hệ thống', icon: FolderCog, path: '/categories', group: 'Quản trị' },
 ];
 
