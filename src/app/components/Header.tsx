@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Bell, Search, ChevronDown, X, FileText, ClipboardList, Settings as SettingsIcon, User, Key, LogOut, FileInput, FileOutput, GitBranch, Calendar, Check, Sun, Moon } from 'lucide-react';
+import { Bell, Search, ChevronDown, X, FileText, ClipboardList, Settings as SettingsIcon, User, Key, LogOut, FileInput, FileOutput, GitBranch, Calendar, Check, Sun, Moon, ArrowLeftRight, Shield, Users } from 'lucide-react';
 import { initialNotifications, notificationTypeConfig, type EnhancedNotification, type NotificationType } from '../data/notificationData';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router';
 import { Breadcrumb } from './Breadcrumb';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast as sonnerToast } from 'sonner';
 
 const typeIcons: Record<NotificationType, typeof FileText> = {
   doc_incoming: FileInput,
@@ -19,7 +20,7 @@ const typeIcons: Record<NotificationType, typeof FileText> = {
 };
 
 export function Header({ title }: { title: string }) {
-  const { user, roles, logout } = useAuth();
+  const { user, roles, logout, switchUser } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [showNotif, setShowNotif] = useState(false);
@@ -178,6 +179,42 @@ export function Header({ title }: { title: string }) {
               )}
             </motion.div>
           </button>
+
+          {/* Role Switcher */}
+          <div className="flex items-center bg-surface-2 rounded-xl p-0.5 gap-0.5">
+            {([
+              { userId: 'user-vms-tt', label: 'Thủ trưởng', shortLabel: 'TT', icon: Shield, color: 'violet' },
+              { userId: 'user-vms-cb', label: 'CB P.QHQT', shortLabel: 'CB', icon: Users, color: 'cyan' },
+            ] as const).map((role) => {
+              const isActive = user?.id === role.userId;
+              const RIcon = role.icon;
+              return (
+                <button
+                  key={role.userId}
+                  onClick={() => {
+                    if (!isActive) {
+                      switchUser(role.userId);
+                      sonnerToast.success(`Đã chuyển sang vai trò: ${role.label}`);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all duration-200 ${
+                    isActive
+                      ? role.color === 'violet'
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-muted-foreground hover:bg-accent'
+                  }`}
+                  title={`Chuyển sang: ${role.label}`}
+                  aria-label={`Chuyển vai trò: ${role.label}`}
+                  aria-pressed={isActive}
+                >
+                  <RIcon className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">{role.label}</span>
+                  <span className="lg:hidden">{role.shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
 
           {/* Notifications */}
           <div className="relative" ref={notifRef}>

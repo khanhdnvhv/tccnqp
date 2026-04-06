@@ -45,7 +45,15 @@ export type Permission =
   | 'category.view'
   | 'category.manage'
   | 'system.config'
-  | 'system.audit';
+  | 'system.audit'
+  // Delegation (VMS) permissions
+  | 'delegation.view'
+  | 'delegation.create'
+  | 'delegation.edit'
+  | 'delegation.delete'
+  | 'delegation.submit'   // Gửi duyệt (CB)
+  | 'delegation.approve'  // Phê duyệt (TT)
+  | 'delegation.manage';  // Quản lý đoàn toàn bộ
 
 export interface Role {
   id: string;
@@ -115,6 +123,7 @@ export const roles: Role[] = [
       'org.view', 'org.manage',
       'category.view', 'category.manage',
       'system.config', 'system.audit',
+      'delegation.view', 'delegation.create', 'delegation.edit', 'delegation.delete', 'delegation.submit', 'delegation.approve', 'delegation.manage',
     ],
   },
   {
@@ -200,6 +209,35 @@ export const roles: Role[] = [
       'report.view.personal',
     ],
   },
+  // ---- VMS-specific roles ----
+  {
+    id: 'role-vms-tt',
+    name: 'Thủ trưởng',
+    description: 'Thủ trưởng đơn vị — phê duyệt đoàn vào, xem toàn bộ báo cáo, chỉ đạo trực tiếp',
+    color: '#7c3aed',
+    isSystem: true,
+    permissions: [
+      'delegation.view', 'delegation.approve', 'delegation.manage',
+      'report.view.all', 'report.export',
+      'calendar.view', 'calendar.create', 'calendar.edit', 'calendar.delete', 'calendar.room.manage',
+      'category.view',
+      'org.view',
+      'user.view',
+    ],
+  },
+  {
+    id: 'role-vms-cb',
+    name: 'Cán bộ P.QHQT',
+    description: 'Cán bộ Phòng Quan hệ Quốc tế — tạo, sửa, gửi duyệt đoàn, quản lý hồ sơ đối tác',
+    color: '#0891b2',
+    isSystem: true,
+    permissions: [
+      'delegation.view', 'delegation.create', 'delegation.edit', 'delegation.delete', 'delegation.submit',
+      'report.view.personal', 'report.view.department', 'report.export',
+      'calendar.view', 'calendar.create', 'calendar.edit',
+      'category.view',
+    ],
+  },
 ];
 
 // ==========================================
@@ -215,6 +253,7 @@ export const departments: Department[] = [
   { id: 'dept-yte', name: 'Phòng Y tế', code: 'YT', description: 'Quản lý y tế và sức khỏe cộng đồng', parentId: 'dept-root', headId: null, order: 6, isActive: true, createdAt: '2024-01-01' },
   { id: 'dept-tnmt', name: 'Phòng TN & Môi trường', code: 'TNMT', description: 'Quản lý tài nguyên và môi trường', parentId: 'dept-root', headId: null, order: 7, isActive: true, createdAt: '2024-01-01' },
   { id: 'dept-ktht', name: 'Phòng Kinh tế - Hạ tầng', code: 'KTHT', description: 'Quản lý kinh tế và hạ tầng', parentId: 'dept-root', headId: null, order: 8, isActive: true, createdAt: '2024-01-01' },
+  { id: 'dept-qhqt', name: 'Phòng Quan hệ Quốc tế', code: 'QHQT', description: 'Quản lý quan hệ quốc tế và đối tác', parentId: 'dept-root', headId: 'user-vms-cb', order: 9, isActive: true, createdAt: '2024-01-01' },
 ];
 
 // ==========================================
@@ -424,6 +463,47 @@ export const users: User[] = [
     lastLogin: '2026-03-13T10:00:00',
     loginHistory: [],
     createdAt: '2025-03-01',
+  },
+  // ---- VMS Users ----
+  {
+    id: 'user-vms-tt',
+    username: 'thutruong',
+    password: 'Tt@123456',
+    fullName: 'Thiếu tướng Trần Quốc Bảo',
+    email: 'bao.tq@tccnqp.mod.vn',
+    phone: '0901000001',
+    avatar: 'TQB',
+    roleIds: ['role-vms-tt'],
+    departmentId: 'dept-root',
+    position: 'Phó Tổng cục trưởng',
+    isActive: true,
+    isLocked: false,
+    failedLoginAttempts: 0,
+    lastLogin: '2026-04-06T07:30:00',
+    loginHistory: [
+      { time: '2026-04-06T07:30:00', ip: '10.10.1.1', device: 'Chrome / Windows 11', success: true },
+    ],
+    createdAt: '2024-01-01',
+  },
+  {
+    id: 'user-vms-cb',
+    username: 'canbo',
+    password: 'Cb@123456',
+    fullName: 'Thiếu tá Lê Minh Đức',
+    email: 'duc.lm@tccnqp.mod.vn',
+    phone: '0901000002',
+    avatar: 'LMĐ',
+    roleIds: ['role-vms-cb'],
+    departmentId: 'dept-qhqt',
+    position: 'Trợ lý Đối ngoại',
+    isActive: true,
+    isLocked: false,
+    failedLoginAttempts: 0,
+    lastLogin: '2026-04-06T08:00:00',
+    loginHistory: [
+      { time: '2026-04-06T08:00:00', ip: '10.10.1.50', device: 'Chrome / Windows 11', success: true },
+    ],
+    createdAt: '2024-01-01',
   },
   {
     id: 'user-locked',

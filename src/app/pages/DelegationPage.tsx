@@ -3,6 +3,7 @@ import { Header } from '../components/Header';
 import { PageTransition } from '../components/PageTransition';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import {
   Users, Search, Plus, Eye, X, Calendar, Clock, MapPin,
@@ -161,6 +162,13 @@ function downloadCSV(filename: string, headers: string[], rows: string[][]) {
 }
 
 export function DelegationPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission('delegation.create');
+  const canApprove = hasPermission('delegation.approve');
+  const canSubmit = hasPermission('delegation.submit');
+  const canDelete = hasPermission('delegation.delete');
+  const canEdit = hasPermission('delegation.edit');
+
   const [list, setList] = useState<Delegation[]>(initialDelegations);
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
@@ -363,10 +371,12 @@ export function DelegationPage() {
               <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] text-muted-foreground hover:bg-accent border border-border transition-colors">
                 <Download className="w-3.5 h-3.5" /> Xuất Excel
               </button>
-              <button onClick={() => { setForm(EMPTY_FORM); setFormError(''); setShowCreate(true); }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] text-white bg-primary hover:opacity-90 transition-all active:scale-[0.98]" style={{ boxShadow: 'var(--shadow-sm)' }}>
-                <Plus className="w-3.5 h-3.5" /> Tạo đoàn mới
-              </button>
+              {canCreate && (
+                <button onClick={() => { setForm(EMPTY_FORM); setFormError(''); setShowCreate(true); }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] text-white bg-primary hover:opacity-90 transition-all active:scale-[0.98]" style={{ boxShadow: 'var(--shadow-sm)' }}>
+                  <Plus className="w-3.5 h-3.5" /> Tạo đoàn mới
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -659,21 +669,23 @@ export function DelegationPage() {
                   Tạo bởi: {viewDelegation.createdBy} — {formatDate(viewDelegation.createdAt)}
                 </div>
                 <div className="flex items-center gap-2">
-                  {viewDelegation.status === 'draft' && (
+                  {viewDelegation.status === 'draft' && canSubmit && (
                     <button onClick={() => changeStatus(viewDelegation.id, 'pending_approval')} className="px-3 py-1.5 rounded-lg text-[12px] bg-amber-500 text-white hover:opacity-90 flex items-center gap-1"><Clock className="w-3 h-3" /> Gửi duyệt</button>
                   )}
-                  {viewDelegation.status === 'pending_approval' && (
+                  {viewDelegation.status === 'pending_approval' && canApprove && (
                     <button onClick={() => changeStatus(viewDelegation.id, 'approved')} className="px-3 py-1.5 rounded-lg text-[12px] bg-emerald-500 text-white hover:opacity-90 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Phê duyệt</button>
                   )}
-                  {viewDelegation.status === 'approved' && (
+                  {viewDelegation.status === 'approved' && (canEdit || canApprove) && (
                     <button onClick={() => changeStatus(viewDelegation.id, 'in_progress')} className="px-3 py-1.5 rounded-lg text-[12px] bg-blue-500 text-white hover:opacity-90 flex items-center gap-1"><Users className="w-3 h-3" /> Đoàn đã vào</button>
                   )}
-                  {viewDelegation.status === 'in_progress' && (
+                  {viewDelegation.status === 'in_progress' && (canEdit || canApprove) && (
                     <button onClick={() => changeStatus(viewDelegation.id, 'completed')} className="px-3 py-1.5 rounded-lg text-[12px] bg-gray-500 text-white hover:opacity-90 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Hoàn thành</button>
                   )}
-                  <button onClick={() => { setDeleteConfirm(viewDelegation.id); }} className="px-3 py-1.5 rounded-lg text-[12px] text-red-500 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-1">
-                    <Trash2 className="w-3 h-3" /> Xóa
-                  </button>
+                  {canDelete && (
+                    <button onClick={() => { setDeleteConfirm(viewDelegation.id); }} className="px-3 py-1.5 rounded-lg text-[12px] text-red-500 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-1">
+                      <Trash2 className="w-3 h-3" /> Xóa
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

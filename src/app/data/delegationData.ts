@@ -118,8 +118,8 @@ export const delegations: Delegation[] = [
     partnerId: 'p-007',
     partnerName: 'Hanwha Aerospace',
     purpose: 'Thảo luận chi tiết điều khoản chuyển giao công nghệ pháo tự hành K9A1',
-    scheduledDate: '2026-04-10',
-    scheduledEndDate: '2026-04-12',
+    scheduledDate: '2026-04-08',
+    scheduledEndDate: '2026-04-10',
     status: 'pending_approval',
     priority: 'directive',
     approvalDocStatus: 'pending',
@@ -198,8 +198,8 @@ export const delegations: Delegation[] = [
     partnerId: 'p-003',
     partnerName: 'Rosoboronexport',
     purpose: 'Đàm phán kỹ thuật giai đoạn 3 của hợp đồng S-300PMU2 và lịch giao hàng 2026',
-    scheduledDate: '2026-04-15',
-    scheduledEndDate: '2026-04-18',
+    scheduledDate: '2026-04-09',
+    scheduledEndDate: '2026-04-11',
     status: 'draft',
     priority: 'directive',
     approvalDocStatus: 'none',
@@ -237,4 +237,52 @@ export function getDelegationStats() {
   });
 
   return { total, pending, approved, inProgress, missingDoc, upcomingNoDocs };
+}
+
+// Lấy danh sách đoàn sắp đến nhưng chưa được duyệt
+export type AlertUrgency = 'overdue' | 'critical' | 'warning' | 'info';
+
+export interface DelegationAlert {
+  delegation: Delegation;
+  daysUntil: number;       // âm = quá hạn, 0 = hôm nay, dương = sắp đến
+  urgencyLevel: AlertUrgency;
+}
+
+export function getUnapprovedUpcomingDelegations(maxDays: number = 3): DelegationAlert[] {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  return delegations
+    .filter((d) => {
+      if (['approved', 'completed', 'cancelled', 'in_progress'].includes(d.status)) return false;
+      const scheduled = new Date(d.scheduledDate);
+      scheduled.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((scheduled.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= maxDays; // bao gồm cả quá hạn (diffDays < 0)
+    })
+    .map((d) => {
+      const scheduled = new Date(d.scheduledDate);
+      scheduled.setHours(0, 0, 0, 0);
+      const daysUntil = Math.ceil((scheduled.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const urgencyLevel: AlertUrgency =
+        daysUntil < 0 ? 'overdue' : daysUntil <= 1 ? 'critical' : daysUntil === 2 ? 'warning' : 'info';
+      return { delegation: d, daysUntil, urgencyLevel };
+    })
+    .sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
+// Lấy tất cả đoàn chưa duyệt (không giới hạn ngày) - dùng cho tab tổng quan
+export function getAllPendingDelegations(): (Delegation & { daysUntil: number })[] {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  return delegations
+    .filter((d) => ['draft', 'pending_approval'].includes(d.status))
+    .map((d) => {
+      const scheduled = new Date(d.scheduledDate);
+      scheduled.setHours(0, 0, 0, 0);
+      const daysUntil = Math.ceil((scheduled.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return { ...d, daysUntil };
+    })
+    .sort((a, b) => a.daysUntil - b.daysUntil);
 }

@@ -18,10 +18,11 @@ import {
   ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { getUnapprovedUpcomingDelegations } from '../data/delegationData';
 import type { Permission } from '../data/users';
 
 interface NavItem {
@@ -45,6 +46,7 @@ export function Sidebar() {
   const { hasPermission, hasAnyPermission, logout, user, roles } = useAuth();
   const location = useLocation();
   const reducedMotion = useReducedMotion();
+  const delegationAlertCount = useMemo(() => getUnapprovedUpcomingDelegations().length, []);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -77,7 +79,7 @@ export function Sidebar() {
       items: [
         { to: '/archive', icon: ScanSearch, label: 'Kho số hóa (OCR)' },
         { to: '/reports', icon: BarChart3, label: 'Báo cáo & Thống kê' },
-        { to: '/notifications', icon: Bell, label: 'Cảnh báo', badge: 2 },
+        { to: '/notifications', icon: Bell, label: 'Cảnh báo', badge: delegationAlertCount || undefined },
       ],
     },
     {

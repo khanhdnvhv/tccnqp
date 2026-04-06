@@ -12,6 +12,7 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   login: (username: string, password: string) => { success: boolean; error?: string };
   logout: () => void;
+  switchUser: (userId: string) => void;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (...permissions: Permission[]) => boolean;
   hasRole: (roleId: string) => boolean;
@@ -48,7 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       localStorage.removeItem('eoffice_auth');
     }
-    return { user: null, isAuthenticated: false, permissions: [], roles: [], sessionExpiry: null };
+    // Auto-login as Cán bộ P.QHQT by default for demo
+    const defaultUser = allUsers.find((u) => u.id === 'user-vms-cb')!;
+    const defaultExpiry = Date.now() + SESSION_TIMEOUT;
+    localStorage.setItem('eoffice_auth', JSON.stringify({ userId: defaultUser.id, sessionExpiry: defaultExpiry }));
+    return {
+      user: defaultUser,
+      isAuthenticated: true,
+      permissions: getUserPermissions(defaultUser),
+      roles: getUserRoles(defaultUser),
+      sessionExpiry: defaultExpiry,
+    };
   });
 
   // Session timeout check
@@ -159,6 +170,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('eoffice_auth');
   }, []);
 
+  const switchUser = useCallback((userId: string) => {
+    const targetUser = allUsers.find((u) => u.id === userId);
+    if (!targetUser || !targetUser.isActive || targetUser.isLocked) return;
+    const sessionExpiry = Date.now() + SESSION_TIMEOUT;
+    const newState: AuthState = {
+      user: targetUser,
+      isAuthenticated: true,
+      permissions: getUserPermissions(targetUser),
+      roles: getUserRoles(targetUser),
+      sessionExpiry,
+    };
+    setState(newState);
+    localStorage.setItem('eoffice_auth', JSON.stringify({ userId: targetUser.id, sessionExpiry }));
+  }, []);
+
   const hasPermissionFn = useCallback(
     (permission: Permission) => state.permissions.includes(permission),
     [state.permissions]
@@ -207,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...state,
         login,
         logout,
+        switchUser,
         hasPermission: hasPermissionFn,
         hasAnyPermission,
         hasRole,
